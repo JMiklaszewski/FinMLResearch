@@ -234,9 +234,9 @@ class CombPurgedKFoldCVLocal(BaseTimeSeriesCrossValidator):
         # But we now have to purge and embargo
         for test_fold_start, test_fold_end in test_fold_bounds:
             # Purge
-            train_indices = self.purge(self, train_indices, test_fold_start, test_fold_end)
+            train_indices = self.purge(train_indices, test_fold_start, test_fold_end) ###FIX: in embargo/purge there is no need to pass the 'self' container as it's already an object method
             # Embargo
-            train_indices = self.embargo(self, train_indices, test_indices, test_fold_end)
+            train_indices = self.embargo(train_indices, test_indices, test_fold_end)
 
         return train_indices
 
