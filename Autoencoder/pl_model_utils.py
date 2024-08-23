@@ -81,7 +81,7 @@ def mc_dropout_predictions(model, data_loader, n_samples=100, num_classes=3):
     return np.array(predictions)
 
 # Function to perform cross-validation
-def cross_validate_model(X, y, model_class, context_length, num_classes, num_features, n_splits=5, num_heads=2, dropout_prob=0.5, hidden_units=128, embed_dim=64, classifier_units=32, lr=1e-3):
+def cross_validate_model(X, y, model_class, context_length, num_classes, num_features, n_splits=5, num_heads=None, dropout_prob=0.5, hidden_units=128, embed_dim=64, classifier_units=32, lr=1e-3):
     
     # # Prepare tensors
     # tensor_x = torch.tensor(X)
@@ -99,16 +99,26 @@ def cross_validate_model(X, y, model_class, context_length, num_classes, num_fea
             torch.tensor(y[test_index], dtype=torch.float32), 
             torch.tensor(X[test_index], dtype=torch.float32)), batch_size=16)
 
-        model = model_class(
-            context_length=context_length, 
-            num_classes=num_classes, 
-            num_features=num_features,
-            num_heads = num_heads,
-            dropout_prob=dropout_prob, 
-            hidden_units=hidden_units, 
-            embed_dim=embed_dim, 
-            classifier_units=classifier_units, 
-            lr=lr)
+        if num_heads is not None: # If it's the attention option
+
+            model = model_class(
+                context_length=context_length, 
+                num_classes=num_classes, 
+                num_features=num_features,
+                num_heads = num_heads,
+                dropout_prob=dropout_prob, 
+                hidden_units=hidden_units, 
+                embed_dim=embed_dim, 
+                classifier_units=classifier_units, 
+                lr=lr)
+            pass
+        else: # if it's the regular (non-attention) autoencoder
+            
+            model = model_class(
+                context_length=context_length, 
+                num_classes=num_classes, 
+                num_features=num_features)
+
         
         trainer = pl.Trainer(max_epochs=50)
         trainer.fit(model, train_dataloaders=train_data)
