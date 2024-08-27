@@ -6,6 +6,7 @@ import pytorch_lightning as pl
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import classification_report
 from sklearn.model_selection import TimeSeriesSplit
+from tqdm import tqdm
 
 # Define a custom dataset
 class TimeSeriesDataset(Dataset):
@@ -55,42 +56,16 @@ class TimeSeriesDataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False)
 
-' Monte Carlo Dropout - Prediction Uncertainties'
-
-def mc_dropout_predictions(model, data_loader, n_samples=100, num_classes=3):
-    model.train()  # Ensure dropout is enabled
-    predictions = []
-    for _ in range(n_samples):
-        batch_predictions = []
-        for batch in data_loader:
-            if len(batch) == 2:
-                target, features = batch
-                target, features = target.to(model.device), features.to(model.device)
-                _, classification = model(target, features)
-            else:
-                static_inputs, past_inputs, future_inputs, targets = batch
-                outputs = model(static_inputs, past_inputs, future_inputs)
-                logits = outputs[:, :, :num_classes]  # Extract logits
-                probabilities = outputs[:, :, num_classes:] # Extract probabilities
-                
-                logits = torch.reshape(logits, (logits.shape[0], logits.shape[-1]))
-
-                classification = logits
-            batch_predictions.append(classification.detach().cpu().numpy())
-        predictions.append(np.concatenate(batch_predictions, axis=0))
-    return np.array(predictions)
-
 # Function to perform cross-validation
-def cross_validate_model(X, y, model_class, context_length, num_classes, num_features, n_splits=5, num_heads=None, dropout_prob=0.5, hidden_units=128, embed_dim=64, classifier_units=32, lr=1e-3):
+def cross_validate_model(X, y, model, cv_split, n_epochs=50):
     
     # # Prepare tensors
     # tensor_x = torch.tensor(X)
     # tensor_y = torch.LongTensor(y)
 
-    tscv = TimeSeriesSplit(n_splits=n_splits)
     aggregated_report = []
 
-    for train_index, test_index in tscv.split(X):
+    for train_index, test_index in tqdm(cv_split):
         train_data = DataLoader(TimeSeriesDataset(
             torch.tensor(y[train_index], dtype=torch.float32), 
             torch.tensor(X[train_index], dtype=torch.float32)), batch_size=16)
@@ -98,29 +73,9 @@ def cross_validate_model(X, y, model_class, context_length, num_classes, num_fea
         val_data = DataLoader(TimeSeriesDataset(
             torch.tensor(y[test_index], dtype=torch.float32), 
             torch.tensor(X[test_index], dtype=torch.float32)), batch_size=16)
-
-        if num_heads is not None: # If it's the attention option
-
-            model = model_class(
-                context_length=context_length, 
-                num_classes=num_classes, 
-                num_features=num_features,
-                num_heads = num_heads,
-                dropout_prob=dropout_prob, 
-                hidden_units=hidden_units, 
-                embed_dim=embed_dim, 
-                classifier_units=classifier_units, 
-                lr=lr)
-            pass
-        else: # if it's the regular (non-attention) autoencoder
-            
-            model = model_class(
-                context_length=context_length, 
-                num_classes=num_classes, 
-                num_features=num_features)
-
         
-        trainer = pl.Trainer(max_epochs=50)
+        # Train the model on current fold
+        trainer = pl.Trainer(max_epochs=n_epochs)
         trainer.fit(model, train_dataloaders=train_data)
 
         # Make predictions on the validation set
