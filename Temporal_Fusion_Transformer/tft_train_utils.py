@@ -240,16 +240,16 @@ from torch.utils.data import DataLoader, TensorDataset, Subset
 from sklearn.model_selection import KFold
 import pytorch_lightning as pl
 from sklearn.metrics import classification_report
-def cross_validate_model(dataset, num_splits, model, num_epochs, num_classes):
-    kfold = KFold(n_splits=num_splits, shuffle=False)
+def cross_validate_model(dataset, model, num_epochs, num_classes, cv_split):
+    # kfold = KFold(n_splits=num_splits, shuffle=False)
     
     fold_results = []
     all_predictions = []
     all_probabilities = []
     all_targets = []
     
-    for fold, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
-        print(f'Fold {fold+1}/{num_splits}')
+    for fold, (train_idx, val_idx) in enumerate(cv_split):
+        print(f'Fold {fold+1}/{len(list(cv_split))}')
         
         train_subset = Subset(dataset, train_idx)
         val_subset = Subset(dataset, val_idx)

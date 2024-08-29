@@ -1019,8 +1019,9 @@ class TemporalFusionTransformer(pl.LightningModule):
         return optimizer
 
     def cross_entropy_loss(self, logits, labels):
-        ' This is suggested way of cross-entropy loss from pytorch-lightning'
-        return nn.functional.nll_loss(logits, labels)
+        ' Since we do not activate the output with Softmax activation, we just use CrossEntropyLoss, for more details, please see:'
+        'https://stackoverflow.com/questions/65192475/pytorch-logsoftmax-vs-softmax-for-crossentropyloss'
+        return nn.CrossEntropyLoss()(logits, labels)
     
     def training_step(self, train_batch, batch_idx):
         ' This function allows us to train the model later on with pl.Trainer'
@@ -1034,7 +1035,7 @@ class TemporalFusionTransformer(pl.LightningModule):
         logits = self.forward(batch)['predicted_quantiles']
         target = batch['target']
 
-        loss = self.cross_entropy_loss(logits.squeeze(1), target.squeeze(1))
+        loss = self.cross_entropy_loss(logits.squeeze(1), target.squeeze(1)) ###FIXME: Double check whether this correctly implements cross-entropy loss
         self.log('train_loss', loss, prog_bar=True)
 
         return loss
