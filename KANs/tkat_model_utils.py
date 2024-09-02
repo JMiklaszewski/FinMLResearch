@@ -165,3 +165,78 @@ def generate_data_w_known_inputs(df, known_input_df, sequence_length, n_ahead):
     y_train = y_train.reshape(y_train.shape[0], -1) 
     y_test = y_test.reshape(y_test.shape[0], -1)
     return X_scaler, X_train, X_test, X_train_unscaled, X_test_unscaled, y_scaler, y_train, y_test, y_train_unscaled, y_test_unscaled, y_scaler_train, y_scaler_test
+
+from sklearn.metrics import classification_report
+def cross_validate_model(X, y, model, cv_split, n_epochs=10, batch_size=16):
+
+
+    fold_results = []
+    all_predictions = []
+    all_probabilities = []
+    all_targets = []
+    
+    for fold, (train_idx, val_idx) in enumerate(cv_split):
+        print(f'Fold {fold+1}/{len(list(cv_split))}')
+
+        X_train_fold, X_val_fold = X[train_idx], X[val_idx]
+        y_train_fold, y_val_fold = y[train_idx], y[val_idx]
+
+        history = model.fit(X_train_fold, y_train_fold, batch_size=batch_size, epochs=n_epochs, 
+                    shuffle=False, verbose = True)
+
+        # Validate the model
+
+        pred_labels = model.predict(X_val_fold)
+        true_labels = y_val_fold
+
+        all_predictions.append(np.argmax(pred_labels, axis=1))
+        # all_probabilities.append(true_labels)
+        all_targets.append(np.argmax(true_labels, axis=1))
+    
+    # Flatten lists for CSV creation
+    all_predictions_flat = [item for sublist in all_predictions for item in sublist]
+    # all_probabilities_flat = [item for sublist in all_probabilities for item in sublist]
+    all_targets_flat = [item for sublist in all_targets for item in sublist]
+
+    # Run classification report
+    target_names = [f'Label_{i}' for i in range(pred_labels.shape[1])]
+
+    print('Cross-Validation results:')
+    print(classification_report(all_targets_flat, all_predictions_flat, target_names=target_names))
+    
+    return fold_results
+
+import numpy as np
+import tensorflow as tf
+
+def mc_dropout_predictions(model, input_data, num_iterations=100):
+    """
+    Perform MC Dropout on a compiled TensorFlow model.
+    
+    Parameters:
+    - model: Compiled TensorFlow model with dropout layers.
+    - input_data: Input data for which predictions are to be made.
+    - num_iterations: Number of MC iterations to perform.
+    
+    Returns:
+    - mean_predictions: Averaged predictions across all iterations.
+    - std_predictions: Standard deviation of predictions across all iterations.
+    """
+    # Create a function to enable dropout during inference
+    dropout_model = tf.keras.models.Model(inputs=model.input, outputs=model.output)
+    
+    # Collect predictions from each iteration
+    predictions = []
+    for _ in range(num_iterations):
+        # Enable dropout by setting training=True
+        preds = dropout_model(input_data, training=True)
+        predictions.append(preds.numpy())
+    
+    # Convert predictions list to a numpy array
+    predictions = np.array(predictions)
+    
+    # Calculate mean and standard deviation across iterations
+    mean_predictions = np.mean(predictions, axis=0)
+    std_predictions = np.std(predictions, axis=0)
+    
+    return mean_predictions, std_predictions
