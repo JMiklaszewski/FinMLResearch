@@ -6,7 +6,8 @@ import numpy as np
 
 # Define the Autoencoder Classifier model
 class AutoencoderClassifier(pl.LightningModule):
-    def __init__(self, context_length, num_classes, num_features, dropout=0.5):
+    def __init__(self, context_length, num_classes, num_features, dropout=0.5, task='classification'):
+        self.task = task
         super(AutoencoderClassifier, self).__init__()
         self.encoder = nn.Sequential(
             nn.Linear(context_length + num_features, 128),
@@ -42,21 +43,35 @@ class AutoencoderClassifier(pl.LightningModule):
         # Pass current tensor through the model
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
-        classification = self.classifier(encoded)
-        class_probs = self.softmax(classification)
 
-        return decoded, class_probs
+        if self.task == 'classification':
+            classification = self.classifier(encoded)
+            class_probs = self.softmax(classification)
+
+            return decoded, class_probs
+        
+        elif self.task == 'regression':
+            return decoded
+            
 
     def training_step(self, batch, batch_idx):
 
         # Unpack current batch to target/features
         targets, features = batch
-        
-        # Get model output for current batch
-        decoded, classification = self(targets, features)
 
-        # Record current loss
-        loss = nn.CrossEntropyLoss()(classification, targets.long())
+        if self.task == 'classification':
+        
+            # Get model output for current batch
+            decoded, classification = self(targets, features)
+
+            # Record current loss
+            loss = nn.CrossEntropyLoss()(classification, targets.long())
+        
+        elif self.task == 'regression':
+            decoded = self(targets, features)
+
+            loss = nn.MSELoss()(decoded.squeeze(1), targets)
+
         self.log('train_loss', loss)
         
         return loss
@@ -66,9 +81,10 @@ class AutoencoderClassifier(pl.LightningModule):
     
 
 class AutoencoderAttentionClassifier(pl.LightningModule):
-    def __init__(self, context_length, num_classes, num_features, num_heads=2, dropout_prob=0.5, hidden_units=128, embed_dim=64, classifier_units=32, lr=1e-3):
+    def __init__(self, context_length, num_features, num_heads=2, dropout_prob=0.5, hidden_units=128, embed_dim=64, num_classes=None, classifier_units=32, lr=1e-3, task='classification'):
         super(AutoencoderAttentionClassifier, self).__init__()
         self.save_hyperparameters()
+        self.task = task
 
         # First layer - encoder
         self.encoder = nn.Sequential(
@@ -96,16 +112,18 @@ class AutoencoderAttentionClassifier(pl.LightningModule):
             nn.ReLU() # No dropout to not decrease decoding performance
         )
 
-        # Additional - classification layer
-        self.classifier = nn.Sequential(
-            nn.Linear(embed_dim, classifier_units),
-            nn.ReLU(),
-            nn.Dropout(dropout_prob),
-            nn.Linear(classifier_units, num_classes)
-        )
+        if task == 'classification':
+            # Additional - classification layer
+            self.classifier = nn.Sequential(
+                nn.Linear(embed_dim, classifier_units),
+                nn.ReLU(),
+                nn.Dropout(dropout_prob),
+                nn.Linear(classifier_units, num_classes)
+            )
 
-        # Softmax activation for logits to probability transformation
-        self.softmax = nn.Softmax(dim=1)
+            # Softmax activation for logits to probability transformation
+            self.softmax = nn.Softmax(dim=1)
+        
         self.lr = lr
 
     def forward(self, x, features=None):
@@ -129,14 +147,20 @@ class AutoencoderAttentionClassifier(pl.LightningModule):
         attn_output, _ = self.attention(encoded, encoded, encoded)
         attn_output = attn_output.squeeze(1)
         decoded = self.decoder(attn_output)
-        classification = self.classifier(attn_output)
-        class_probs = self.softmax(classification)
 
-        if features is not None:
-            return decoded, class_probs
-        else: 
-            return class_probs
+        # If it's classification, then we run the classification layer as well
+        if self.task == 'classification':
+            classification = self.classifier(attn_output)
+            class_probs = self.softmax(classification)
+
+            if features is not None:
+                return decoded, class_probs
+            else: 
+                return class_probs
         # return decoded, class_probs if features is not None else class_probs
+        # Otherwise, for regression, we just return the decoded part
+        elif self.task == 'regression':
+            return decoded
 
     def training_step(self, batch, batch_idx):
 
@@ -144,10 +168,17 @@ class AutoencoderAttentionClassifier(pl.LightningModule):
         targets, features = batch
         
         # Get model output for current batch
-        decoded, classification = self(targets, features)
+        if self.task == 'classification':
+            decoded, classification = self(targets, features)
         
-        # Record current loss
-        loss = nn.CrossEntropyLoss()(classification, targets.long())
+            # Record current loss
+            loss = nn.CrossEntropyLoss()(classification, targets.long())
+
+        elif self.task == 'regression':
+            decoded = self(targets, features)
+
+            loss = nn.MSELoss()(decoded, targets)
+
         self.log('train_loss', loss)
         return loss
 

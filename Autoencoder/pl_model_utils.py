@@ -4,7 +4,7 @@ from functools import reduce
 import torch
 import pytorch_lightning as pl
 from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 from tqdm import tqdm
 
@@ -85,20 +85,36 @@ def cross_validate_model(X, y, model, cv_split, n_epochs=50):
         with torch.no_grad():
             for batch in val_data:
                 targets, features = batch
-                _, classification = model(targets, features)
-                preds = torch.argmax(classification, dim=1)
+
+                if model.task == 'classifiaction':
+                    _, classification = model(targets, features)
+                    preds = torch.argmax(classification, dim=1)
+
+                elif model.task == 'regression':
+                    preds = model(targets, features)
+
                 all_preds.extend(preds.cpu().numpy())
                 all_targets.extend(targets.cpu().numpy())
         
-        # Compute classification report
-        report = classification_report(all_targets, all_preds, output_dict=True)
+        if model.task == 'classifiaction':
+            # Compute classification report
+            report = classification_report(all_targets, all_preds, output_dict=True)
+        
+        elif model.task == 'regression':
+            report = mean_squared_error(all_targets, all_preds)
+        
         aggregated_report.append(report)
-    
-    # Aggregate classification reports
-    reports = [pd.DataFrame(i) for i in aggregated_report]
-    avg_report = reduce(lambda x,y: x.add(y, fill_value=0), reports)/len(reports)
 
-    print("Cross-Validation Classification Report:")
+    if model.task == 'classification':
+        # Aggregate classification reports
+        reports = [pd.DataFrame(i) for i in aggregated_report]
+        avg_report = reduce(lambda x,y: x.add(y, fill_value=0), reports)/len(reports)
+    
+    elif model.task == 'regression':
+        avg_report = {f'Fold_{i}' : v for i,v in enumerate(aggregated_report)}
+    
+
+    print("Cross-Validation Report:")
     print(avg_report)
     
     return avg_report

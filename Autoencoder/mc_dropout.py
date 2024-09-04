@@ -15,9 +15,15 @@ class LitMCdropoutModel(pl.LightningModule):
 
         # Enable dropout during inference
         self.model.train()
+
+        if self.model.task == 'classification':
         
-        # Perform multiple forward passes
-        predictions = [self.model(targets, features)[-1].unsqueeze(0) for _ in range(self.mc_iterations)]
+            # Perform multiple forward passes
+            predictions = [self.model(targets, features)[-1].unsqueeze(0) for _ in range(self.mc_iterations)]
+
+        elif self.model.task == 'regression':
+            # Perform multiple forward passes
+            predictions = [self.model(targets, features) for _ in range(self.mc_iterations)]
         
         # Stack and average predictions
         predictions = torch.cat(predictions, dim=0)
