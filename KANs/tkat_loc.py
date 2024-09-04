@@ -131,7 +131,7 @@ class EmbeddingLayer(Layer):
         return input_shape[:-1] + (self.num_hidden, input_shape[-1])
 
 
-def TKAT(sequence_length: int, num_unknow_features: int, num_know_features: int, num_embedding: int, num_hidden: int, num_heads: int, n_ahead: int, use_tkan: bool = True):
+def TKAT(sequence_length: int, num_unknow_features: int, num_know_features: int, num_embedding: int, num_hidden: int, num_heads: int, n_ahead: int, use_tkan: bool = True, task='classification'):
     """Temporal Kan Transformer model
 
     Args:
@@ -180,4 +180,4 @@ def TKAT(sequence_length: int, num_unknow_features: int, num_know_features: int,
     dense_output = Dense(n_ahead)(flattened_output) # we need to use this layer for classification probs
     # softmax_output = tf.nn.softmax(dense_output) # this doesn't work with dense_output, CategoricalCrossentropy handles the softmax activation by itself
     
-    return Model(inputs=inputs, outputs=dense_output)
+    return Model(inputs=inputs, outputs=dense_output, task=task)

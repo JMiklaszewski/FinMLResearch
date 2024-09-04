@@ -3,6 +3,7 @@ import sys
 sys.path.append(os.getcwd())
 
 import numpy as np
+from torch.nn import MSELoss
 
 
 class MinMaxScaler:
@@ -189,7 +190,10 @@ def cross_validate_model(X, y, model, cv_split, n_epochs=10, batch_size=16):
         pred_labels = model.predict(X_val_fold)
         true_labels = y_val_fold
 
-        all_predictions.append(np.argmax(pred_labels, axis=1))
+        if model.task == 'classification':
+            all_predictions.append(np.argmax(pred_labels, axis=1))
+        elif model.task == 'regression':
+            all_predictions.append(pred_labels)
         # all_probabilities.append(true_labels)
         all_targets.append(np.argmax(true_labels, axis=1))
     
@@ -198,12 +202,18 @@ def cross_validate_model(X, y, model, cv_split, n_epochs=10, batch_size=16):
     # all_probabilities_flat = [item for sublist in all_probabilities for item in sublist]
     all_targets_flat = [item for sublist in all_targets for item in sublist]
 
-    # Run classification report
-    target_names = [f'Label_{i}' for i in range(pred_labels.shape[1])]
-
     print('Cross-Validation results:')
-    print(classification_report(all_targets_flat, all_predictions_flat, target_names=target_names))
+    if model.task_type == 'classification':
+
+        # Run classification report
+        target_names = [f'Label_{i}' for i in range(pred_labels.shape[1])]
+        
+        print(classification_report(all_targets_flat, all_predictions_flat, target_names=target_names))
     
+    elif model.task_type == 'regression':
+
+        print(MSELoss()(all_predictions_flat, all_targets_flat))
+
     return fold_results
 
 import numpy as np
