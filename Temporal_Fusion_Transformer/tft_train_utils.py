@@ -11,6 +11,7 @@ from torch import optim
 from torch import nn
 import torch.nn.init as init
 from torch.utils.data import Dataset, DataLoader, Subset
+from torch.nn import MSELoss
 
 import sys
 import os
@@ -287,7 +288,10 @@ def cross_validate_model(dataset, model, num_epochs, num_classes, cv_split):
 
             targets = batch['target'].flatten()
 
-            fold_predictions.extend(torch.argmax(logits, dim=1).tolist())
+            if model.task_type == 'classification':
+                fold_predictions.extend(torch.argmax(logits, dim=1).tolist())
+            elif model.task_type == 'regression':
+                fold_predictions.extend(logits.tolist())
             # fold_probabilities.extend(logits.tolist())  # Only take the last time step
             fold_targets.extend(targets.tolist())
         
@@ -300,11 +304,18 @@ def cross_validate_model(dataset, model, num_epochs, num_classes, cv_split):
     # all_probabilities_flat = [item for sublist in all_probabilities for item in sublist]
     all_targets_flat = [item for sublist in all_targets for item in sublist]
 
-    # Run classification report
-    target_names = [f'Label_{i}' for i in range(num_classes)]
+    if model.task_type == 'classifiaction':
 
-    print('Cross-Validation results:')
-    print(classification_report(all_targets_flat, all_predictions_flat, target_names=target_names))
+        # Run classification report
+        target_names = [f'Label_{i}' for i in range(num_classes)]
+
+        print('Cross-Validation results:')
+        print(classification_report(all_targets_flat, all_predictions_flat, target_names=target_names))
+
+    elif model.task_type == 'regression':
+
+        print('Cross-Validation results:')
+        print(MSELoss()(torch.tensor(all_predictions_flat), torch.tensor(all_targets_flat)))
     
     return fold_results
 

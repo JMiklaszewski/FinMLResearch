@@ -592,10 +592,10 @@ class TemporalFusionTransformer(pl.LightningModule):
         self.target_window_start_idx = (config.target_window_start - 1) if config.target_window_start is not None else 0
         if self.task_type == 'regression':
             self.output_quantiles = config.model.output_quantiles
-            self.num_outputs = len(self.output_quantiles)
-        elif self.task_type == 'classification': ### We need this solution
+            self.num_outputs = 1
+        elif self.task_type == 'classification': ### We need this solution for classification
             self.output_quantiles = None
-            self.num_outputs = data_props.get('num_classes', 0) ### I think we should changes to num_classes
+            self.num_outputs = data_props.get('num_classes', 0) ### Change num_outputs to num_classes
         else:
             raise ValueError(f"unsupported task type: {self.task_type}")
         self.state_size = config.model.state_size
@@ -1023,6 +1023,9 @@ class TemporalFusionTransformer(pl.LightningModule):
         'https://stackoverflow.com/questions/65192475/pytorch-logsoftmax-vs-softmax-for-crossentropyloss'
         return nn.CrossEntropyLoss()(logits, labels)
     
+    def mse_loss(self, logits, labels):
+        return nn.MSELoss()(logits, labels)
+    
     def training_step(self, train_batch, batch_idx):
         ' This function allows us to train the model later on with pl.Trainer'
 
@@ -1035,7 +1038,12 @@ class TemporalFusionTransformer(pl.LightningModule):
         logits = self.forward(batch)['predicted_quantiles']
         target = batch['target']
 
-        loss = self.cross_entropy_loss(logits.squeeze(1), target.squeeze(1)) ###FIXME: Double check whether this correctly implements cross-entropy loss
+        if self.task_type == 'classification':
+            loss = self.cross_entropy_loss(logits.squeeze(1), target.squeeze(1))
+
+        elif self.task_type == 'regression':
+            loss = self.mse_loss(logits.squeeze(1), target.squeeze(1))
+
         self.log('train_loss', loss, prog_bar=True)
 
         return loss
@@ -1052,5 +1060,10 @@ class TemporalFusionTransformer(pl.LightningModule):
         logits = self.forward(batch)['predicted_quantiles']
         target = batch['target']
 
-        loss = self.cross_entropy_loss(logits.squeeze(1), target.squeeze(1))
+        if self.task_type == 'classification':
+            loss = self.cross_entropy_loss(logits.squeeze(1), target.squeeze(1))
+        
+        elif self.task_type == 'regression':
+            loss= self.mse_loss(logits.squeeze(1), target.squeeze(1))
+            
         self.log('val_loss', loss, prog_bar=True)
