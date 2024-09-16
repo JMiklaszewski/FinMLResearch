@@ -68,11 +68,13 @@ def cross_validate_model(X, y, model, cv_split, n_epochs=50):
     for train_index, test_index in tqdm(cv_split):
         train_data = DataLoader(TimeSeriesDataset(
             torch.tensor(y[train_index], dtype=torch.float32), 
-            torch.tensor(X[train_index], dtype=torch.float32)), batch_size=16)
+            torch.tensor(X[train_index], dtype=torch.float32)), 
+            batch_size=16)
         
         val_data = DataLoader(TimeSeriesDataset(
             torch.tensor(y[test_index], dtype=torch.float32), 
-            torch.tensor(X[test_index], dtype=torch.float32)), batch_size=16)
+            torch.tensor(X[test_index], dtype=torch.float32)), batch_size=16,
+            )
         
         # Train the model on current fold
         trainer = pl.Trainer(max_epochs=n_epochs)
@@ -86,7 +88,7 @@ def cross_validate_model(X, y, model, cv_split, n_epochs=50):
             for batch in val_data:
                 targets, features = batch
 
-                if model.task == 'classifiaction':
+                if model.task == 'classification':
                     _, classification = model(targets, features)
                     preds = torch.argmax(classification, dim=1)
 
@@ -96,7 +98,7 @@ def cross_validate_model(X, y, model, cv_split, n_epochs=50):
                 all_preds.extend(preds.cpu().numpy())
                 all_targets.extend(targets.cpu().numpy())
         
-        if model.task == 'classifiaction':
+        if model.task == 'classification':
             # Compute classification report
             report = classification_report(all_targets, all_preds, output_dict=True)
         
