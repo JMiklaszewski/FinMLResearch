@@ -258,16 +258,6 @@ def cross_validate_model(dataset, model, num_epochs, num_classes, cv_split):
         train_loader = DataLoader(train_subset, batch_size=16, shuffle=False)
         val_loader = DataLoader(val_subset, batch_size=16, shuffle=False)
         
-        trainer = pl.Trainer(max_epochs=num_epochs, enable_model_summary=False)
-        trainer.fit(model, train_loader, val_loader)
-        
-        fold_results.append({
-            'train_loss': trainer.callback_metrics['train_loss'].item(),
-            # 'train_acc': trainer.callback_metrics['train_acc'].item(),
-            'val_loss': trainer.callback_metrics['val_loss'].item(),
-            # 'val_acc': trainer.callback_metrics['val_acc'].item(),
-        })
-        
         # Collect predictions and probabilities for CSV output
         model.eval()
         fold_predictions = []
@@ -304,19 +294,17 @@ def cross_validate_model(dataset, model, num_epochs, num_classes, cv_split):
     # all_probabilities_flat = [item for sublist in all_probabilities for item in sublist]
     all_targets_flat = [item for sublist in all_targets for item in sublist]
 
-    if model.task_type == 'classifiaction':
-
+    if model.task_type == 'classification':
         # Run classification report
         target_names = [f'Label_{i}' for i in range(num_classes)]
-
-        print('Cross-Validation results:')
-        print(classification_report(all_targets_flat, all_predictions_flat, target_names=target_names))
+        fold_results = classification_report(all_targets_flat, all_predictions_flat, target_names=target_names)
 
     elif model.task_type == 'regression':
-
-        print('Cross-Validation results:')
-        print(MSELoss()(torch.tensor(all_predictions_flat), torch.tensor(all_targets_flat)))
+        fold_results = MSELoss()(torch.tensor(all_predictions_flat), torch.tensor(all_targets_flat))
     
+    print('Cross-Validation results:')
+    print(fold_results)
+
     return fold_results
 
 ' Monte Carlo Dropout - Prediction Uncertainties'
