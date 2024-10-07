@@ -29,6 +29,7 @@ from tft_train_utils import cross_validate_model
 from mc_dropout_tft import mc_dropout
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from torch.nn.functional import nll_loss
+from torch.nn import CrossEntropyLoss
 from pytorch_lightning import Trainer
 # from mc_dropout import mc_dropout
 import pytorch_lightning as pl
@@ -59,20 +60,29 @@ disable_possible_user_warnings()
 def generate_random_data(n_rows, n_classes):
     # Prepare sample data
     timestamp = pd.date_range(start='2020-01-01', periods=n_rows, freq='D')
-    time_series = pd.DataFrame({'values': np.random.randn(n_rows)}, index=timestamp)
-    labels = pd.DataFrame({'label': np.random.randint(0, n_classes, size=n_rows)}, index=timestamp)
+    # time_series = pd.DataFrame({'values': np.random.randn(n_rows)}, index=timestamp)
+    # labels = pd.DataFrame({'label': np.random.randint(0, n_classes, size=n_rows)}, index=timestamp)
     ext_features = pd.DataFrame({
         'feature1': np.random.randn(n_rows),
         'feature2': np.random.randn(n_rows)
         }, index=timestamp)
 
-    return time_series.join(labels).join(ext_features)
+    return ext_features
+
+def get_random_probs(n_rows:int, n_vars:int) -> np.array: 
+    # Generate random sample of values between 0 and 1
+    y = np.random.rand(n_rows,n_vars)
+
+    # Transform random numbers to probabilities
+    return np.apply_along_axis(lambda x: x / sum(x), 1, y)
 
 #------------------------------------
 # HYPERPARAMETER TUNING WITH OPTUNA
 #------------------------------------
 
 def tft_objective(trial, configuration, train_data):
+
+    loss = CrossEntropyLoss()
 
     vars = ['static_feats_numeric', 'static_feats_categorical',
         'historical_ts_numeric', 'historical_ts_categorical',
@@ -135,12 +145,12 @@ def tft_objective(trial, configuration, train_data):
                 logits = model(batch)['predicted_quantiles']
                 # preds = torch.argmax(classification, dim=1)
                 all_preds.extend(logits.squeeze(1).cpu().numpy())
-                all_targets.extend(batch['target'].flatten().cpu().numpy())
+                all_targets.extend(batch['target'].squeeze(1).cpu().numpy())
 
         # val_predictions = trainer.predict(model, val_loader)
         # val_predictions = torch.cat([x for x in val_predictions], dim=0).numpy()
         
-        val_loss = nll_loss(torch.tensor(all_preds), torch.tensor(all_targets))
+        val_loss = loss(torch.tensor(all_preds), torch.tensor(all_targets))
         cv_scores.append(val_loss)
 
     return np.mean(cv_scores)
@@ -156,6 +166,11 @@ def tft_classification(model_id):
 
     # Specify input - make sure to use real data
     df = generate_random_data(N_ROWS, N_CLASSES)
+    y = get_random_probs(N_ROWS, N_CLASSES)
+
+    train_X, train_y = df[:500], y[:500, :]
+    val_X, val_y = df[500:1000], y[500:1000, :]
+    test_X, test_y = df[1000:], y[1000:, :]
 
     train_data = df[:500]
     val_data = df[500:1000]
@@ -180,14 +195,14 @@ def tft_classification(model_id):
     future_steps = 1
 
     # read features and target label
-    feat_train = test_data.loc[:,['feature1', 'feature2']]
-    label_train = test_data['label'][-(len(train_data)-historical_steps):]
+    feat_train = train_X.loc[:,['feature1', 'feature2']]
+    label_train = train_y[-(len(train_data)-historical_steps):, :]
 
-    feat_val = val_data.loc[:,['feature1', 'feature2']]
-    label_val = val_data['label'][-(len(val_data)-historical_steps):]
+    feat_val = val_X.loc[:,['feature1', 'feature2']]
+    label_val = val_y[-(len(val_data)-historical_steps):, :]
 
-    feat_test = test_data.loc[:,['feature1', 'feature2']]
-    label_test = test_data['label'][-(len(test_data)-historical_steps):]
+    feat_test = test_X.loc[:,['feature1', 'feature2']]
+    label_test = test_y[-(len(test_data)-historical_steps):, :]
 
     n_rows = N_ROWS
     n_obs_train = len(train_data) - historical_steps
@@ -204,7 +219,7 @@ def tft_classification(model_id):
             'future_ts_numeric': torch.rand(n_obs_train, future_steps, data_props['num_future_numeric'],dtype=torch.float32),
             'future_ts_categorical': torch.stack([torch.randint(c, size=(n_obs_train, future_steps)) for c in data_props['future_categorical_cardinalities']], dim=-1).type(torch.LongTensor),
             
-            'target' : torch.reshape(torch.tensor(label_train[-(n_obs_train):].values, dtype=torch.int64), (n_obs_train, future_steps))
+            'target' : torch.reshape(torch.tensor(label_train[-(n_obs_train):], dtype=torch.float32), (n_obs_train, future_steps, N_CLASSES))
         }
 
     batch_test = {
@@ -217,7 +232,7 @@ def tft_classification(model_id):
             'future_ts_numeric': torch.rand(n_obs_test, future_steps, data_props['num_future_numeric'], dtype=torch.float32),
             'future_ts_categorical': torch.stack([torch.randint(c, size=(n_obs_test, future_steps)) for c in data_props['future_categorical_cardinalities']], dim=-1).type(torch.LongTensor),
             
-            'target' : torch.reshape(torch.tensor(label_test[-(n_obs_test):].values, dtype=torch.int64), (n_obs_test, future_steps))
+            'target' : torch.reshape(torch.tensor(label_test[-(n_obs_test):], dtype=torch.float32), (n_obs_test, future_steps, N_CLASSES))
         }
 
     batch_val = {
@@ -230,7 +245,7 @@ def tft_classification(model_id):
             'future_ts_numeric': torch.rand(n_obs_val, future_steps, data_props['num_future_numeric'], dtype=torch.float32),
             'future_ts_categorical': torch.stack([torch.randint(c, size=(n_obs_val, future_steps)) for c in data_props['future_categorical_cardinalities']], dim=-1).type(torch.LongTensor),
             
-            'target' : torch.reshape(torch.tensor(label_val[-(n_obs_val):].values, dtype=torch.int64), (n_obs_val, future_steps))
+            'target' : torch.reshape(torch.tensor(label_val[-(n_obs_val):], dtype=torch.float32), (n_obs_val, future_steps, N_CLASSES))
         }
     
     configuration = {
@@ -312,7 +327,7 @@ def tft_classification(model_id):
 
     # Read X and y shapes for CV
     X = batch_val['historical_ts_numeric'].detach().numpy()[:,0,:] # take the first 2d input for cv
-    y = batch_val['target'].detach().numpy().flatten()
+    y = batch_val['target'].detach().numpy().squeeze(1)
 
     # Construct CPCV in-line with DePrado method
     cpcv = CombinatorialPurgedGroupKFold(
@@ -363,7 +378,7 @@ def tft_classification(model_id):
         'Uncertainty_1': [u[1] for u in std_predictions],
         'Uncertainty_2': [u[2] for u in std_predictions],
         'Uncertainty_3': [u[3] for u in std_predictions]
-    }, index=test_data[-len(mean_predictions):].index)
+    })
 
     # test_df.to_csv('tft_autoenc_predictions.csv', index=False)
     out_filename = f'{model_label}_test_predictions.csv'
