@@ -276,14 +276,16 @@ def cross_validate_model(dataset, model, num_epochs, num_classes, cv_split):
             logits = outputs['predicted_quantiles']  # Extract logits
             logits = torch.reshape(logits, (logits.shape[0], logits.shape[-1]))
 
-            targets = batch['target'].flatten()
+            targets = batch['target'].squeeze(1)
 
             if model.task_type == 'classification':
                 fold_predictions.extend(torch.argmax(logits, dim=1).tolist())
+                fold_targets.extend(torch.argmax(targets, dim=1).tolist())
+                
             elif model.task_type == 'regression':
                 fold_predictions.extend(logits.tolist())
             # fold_probabilities.extend(logits.tolist())  # Only take the last time step
-            fold_targets.extend(targets.tolist())
+                fold_targets.extend(targets.tolist())
         
         all_predictions.append(fold_predictions)
         # all_probabilities.append(fold_probabilities)
